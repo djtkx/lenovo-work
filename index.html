@@ -545,6 +545,15 @@
   .book-row .bbar { height:5px; border-radius:999px; background:var(--border); overflow:hidden; margin-top:7px; }
   .book-row .bbar i { display:block; height:100%; border-radius:999px; }
   .book-row .bpct { font-size:14px; font-weight:800; letter-spacing:-.02em; flex:0 0 auto; }
+  /* 可拖拽进度条（range slider） */
+  input.drag { -webkit-appearance:none; appearance:none; width:100%; height:22px; background:transparent; cursor:pointer; margin:0; padding:0; --val:0%; --c:var(--module-1); }
+  input.drag::-webkit-slider-runnable-track { height:7px; border-radius:999px; background:linear-gradient(90deg, var(--c) 0%, var(--c) var(--val), var(--border) var(--val), var(--border) 100%); }
+  input.drag::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:22px; height:22px; margin-top:-7.5px; border-radius:50%; background:#fff; border:3px solid var(--c); box-shadow:0 0 0 3px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.55); }
+  input.drag::-moz-range-track { height:7px; border-radius:999px; background:var(--border); }
+  input.drag::-moz-range-progress { height:7px; border-radius:999px; background:var(--c); }
+  input.drag::-moz-range-thumb { width:20px; height:20px; border-radius:50%; background:#fff; border:3px solid var(--c); box-shadow:0 0 0 3px rgba(0,0,0,.35); }
+  input.drag:focus { outline:none; }
+  input.drag.flex1 { width:auto; flex:1 1 80px; min-width:80px; }
 
   /* 本周目标 / 通用目标条 */
   .goal-list { display:flex; flex-direction:column; gap:13px; }
@@ -789,6 +798,36 @@ function avgProgress(list){
   if(!list||!list.length) return { value:0, sub:"0" };
   const v = Math.round(list.reduce((s,x)=>s+Math.min(100,(x.current/x.target)*100||0),0)/list.length);
   return { value:v, sub:`${list.length} 项` };
+}
+/* 可拖拽进度条：生成滑块 + 全局事件绑定 */
+function dragStep(t){ t=+t||1; return t<=50?1:Math.max(1,Math.round(t/100)); }
+function progressDrag(x,m,col,cls){
+  const t=+x.target||1; const cur=Math.min(t,Math.max(0,+x.current||0));
+  return `<input type="range" class="drag ${cls||''}" style="--c:${col||'var(--module-1)'}" min="0" max="${t}" step="${dragStep(t)}" value="${cur}" data-mkey="${m.key}" data-id="${x.id}" aria-label="拖拽调整进度">`;
+}
+function wireDrags(scope){
+  const root=scope||$("#screen");
+  root.querySelectorAll("input.drag").forEach(el=>{
+    if(el._dcWired) return; el._dcWired=true;
+    const paint=()=>el.style.setProperty('--val', (+el.value/(+el.max||1)*100)+'%');
+    paint();
+    const refresh=(x,m)=>{
+      const pct=Math.min(100,Math.round((x.current/x.target)*100||0));
+      root.querySelectorAll(`[data-cur="${x.id}"][data-mkey="${m.key}"]`).forEach(n=>n.textContent=`${x.current}/${x.target} ${x.unit||m.unit||''}`);
+      root.querySelectorAll(`[data-pct="${x.id}"][data-mkey="${m.key}"]`).forEach(n=>n.textContent=pct+'%');
+    };
+    el.addEventListener('input',()=>{
+      paint();
+      const m=modOf(el.dataset.mkey); const x=(data[el.dataset.mkey]||[]).find(i=>i.id==el.dataset.id);
+      if(!x||!m) return;
+      x.current=Math.max(0,+el.value||0);
+      refresh(x,m);
+      store.save();
+    });
+    el.addEventListener('change',()=>{ render(); });
+    el.addEventListener('click',e=>e.stopPropagation());
+    el.addEventListener('pointerdown',e=>e.stopPropagation());
+  });
 }
 const modOf = k => CONFIG.modules.find(m=>m.key===k);
 const $ = s => document.querySelector(s);
@@ -1075,8 +1114,8 @@ function goalTileHTML(key){
   const rows = all.length ? all.map((x,i)=>{ const pct=Math.min(100,Math.round((x.current/x.target)*100||0)); const col=m.color||colors[i%colors.length];
     return `<div class="book-row js-open" data-open="${key}"><span class="spine" style="background:${col}">${icon(m.icon,16)}</span>
       <div class="bmid"><div class="btt">${pct>=100?`<span style="color:var(--module-1);display:inline-flex;vertical-align:-2px;margin-right:3px">${icon("check",13,2.6)}</span>`:''}${esc(x.title)}</div>
-        <div class="bsub">${x.current}/${x.target} ${x.unit||m.unit||''}</div>
-        <div class="bbar"><i style="width:${pct}%;background:${col}"></i></div></div><span class="bpct" style="color:${col}">${pct}%</span></div>`; }).join("")
+        <div class="bsub" data-cur="${x.id}" data-mkey="${m.key}">${x.current}/${x.target} ${x.unit||m.unit||''}</div>
+        ${progressDrag(x,m,col)}</div><span class="bpct" data-pct="${x.id}" data-mkey="${m.key}" style="color:${col}">${pct}%</span></div>`; }).join("")
     : `<div class="focus-empty">还没有目标，去「${m.name}」添加吧</div>`;
   return `<div class="tile b4"><div class="tile-h"><span class="tic">${icon(m.icon,16)}</span><div class="tt"><span class="en">${m.en||''}</span><span class="zh">${m.name}</span></div><span class="r js-open" data-open="${key}">${all.length} 项</span></div>
     <div class="book-list">${rows}</div></div>`;
@@ -1153,6 +1192,7 @@ function wireHome(){
   // 番茄钟控制
   const tg=$("#pomo-toggle"); if(tg) tg.onclick=()=>{ pomo.running=!pomo.running; pomoUpdate(); };
   const rs=$("#pomo-reset"); if(rs) rs.onclick=()=>{ pomo.running=false; pomo.remain=pomo.total; pomoUpdate(); };
+  wireDrags();
 }
 
 /* ---------- INSIGHT ---------- */
@@ -1369,8 +1409,8 @@ function recHTML(m,x){
   if(m.type==="progress"){ const pct=Math.min(100,Math.round((x.current/x.target)*100||0));
     return `<div class="rec ${layoutCls}">${acts}<div class="top" style="padding-right:60px">${thumb}<div class="body" data-edit="${x.id}">
       <span class="rname">${esc(x.title)}</span>
-      <div class="pbar"><i style="width:${pct}%;background:${m.color}"></i></div>
-      <span class="rdate" style="margin-left:0;color:var(--text-secondary)">${x.current}/${x.target} ${x.unit||m.unit||''} · ${pct}%</span>
+      ${progressDrag(x,m,m.color,'flex1')}
+      <span class="rdate" style="margin-left:0;color:var(--text-secondary)"><span data-cur="${x.id}" data-mkey="${m.key}">${x.current}/${x.target} ${x.unit||m.unit||''}</span> · <span data-pct="${x.id}" data-mkey="${m.key}">${pct}%</span></span>
       ${x.note?`<div class="rnote">${esc(x.note)}</div>`:''}${customBlock}</div></div></div>`; }
   if(m.type==="finance"){ const inc=x.type==="income";
     return `<div class="rec ${layoutCls}">${acts}<div class="top" style="padding-right:60px">${thumb}<div class="body" data-edit="${x.id}">
@@ -1398,6 +1438,7 @@ function wireModule(key){ const m=modOf(key);
   $("#screen").querySelectorAll("[data-edit]").forEach(el=>el.onclick=()=>openEditor(key,(data[key]).find(i=>i.id==el.dataset.edit)));
   $("#screen").querySelectorAll(".js-del").forEach(el=>el.onclick=e=>{ e.stopPropagation(); confirmDelete(key, el.dataset.id); });
   $("#screen").querySelectorAll(".js-pin").forEach(el=>el.onclick=e=>{ e.stopPropagation(); const x=(data[key]).find(i=>i.id==el.dataset.id); x.pinned=!x.pinned; persist(); });
+  wireDrags();
 }
 
 /* ---------- EDITOR MODAL (per type) ---------- */
