@@ -800,7 +800,7 @@ function avgProgress(list){
   return { value:v, sub:`${list.length} 项` };
 }
 /* 可拖拽进度条：生成滑块 + 全局事件绑定 */
-function dragStep(t){ t=+t||1; return t<=50?1:Math.max(1,Math.round(t/100)); }
+function dragStep(t){ t=+t||1; if(t<=5) return 0.1; if(t<=30) return 0.5; if(t<=200) return 1; return Math.max(1,Math.round(t/100)); }
 function progressDrag(x,m,col,cls){
   const t=+x.target||1; const cur=Math.min(t,Math.max(0,+x.current||0));
   return `<input type="range" class="drag ${cls||''}" style="--c:${col||'var(--module-1)'}" min="0" max="${t}" step="${dragStep(t)}" value="${cur}" data-mkey="${m.key}" data-id="${x.id}" aria-label="拖拽调整进度">`;
