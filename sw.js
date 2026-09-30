@@ -1,5 +1,5 @@
 /* 死亡细胞工作台 · Service Worker（离线缓存） */
-const CACHE = 'dc-workbench-v3';
+const CACHE = 'dc-workbench-v4';
 const ASSETS = [
   './index.html',
   './manifest.webmanifest',

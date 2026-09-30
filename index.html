@@ -623,6 +623,12 @@
     .modal{ padding:18px; }
     button, .qbtn, .opt{ min-height:40px; }
   }
+  /* 周末训练一键勾选（周五/周六/周日） */
+  .batch-bar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:10px 0 4px; }
+  .batch-btn{ display:inline-flex; align-items:center; gap:5px; padding:7px 14px; border-radius:9px;
+    border:1px solid rgba(255,255,255,.16); font-size:13px; font-weight:600; cursor:pointer; line-height:1; }
+  .batch-btn:active{ transform:scale(.95); filter:brightness(1.15); }
+  .batch-hint{ font-size:11px; color:var(--text-tertiary); margin-left:auto; }
 </style>
 </head>
 <body>
@@ -843,8 +849,7 @@ const store = {
 let data = store.load();
 /* ---------- 每日/每周自动重置（阅读目标除外） ---------- */
 function resetMeta(){
-  const n = new Date();
-  return { day: isoToday(), week: `${n.getFullYear()}-W${weekNum()}` };
+  return { day: isoToday(), week: weekDates()[0] };
 }
 function maybeReset(){
   const cur = resetMeta();
@@ -1121,6 +1126,25 @@ function goalTileHTML(key){
     <div class="book-list">${rows}</div></div>`;
 }
 
+/* 周末训练一键勾选栏（周五/周六/周日） */
+function batchBar(m, key){
+  const pr=m.priorities||[];
+  if(!pr.length) return "";
+  const btn=p=>`<button class="batch-btn js-batch" data-key="${key}" data-prio="${p.key}" title="一键勾选${esc(p.label)}全部" style="background:${p.color};color:${p.text}">${icon("check",14,2.6)}${esc(p.label)}</button>`;
+  return `<div class="batch-bar">${pr.map(btn).join("")}<span class="batch-hint">一键勾选整天计划</span></div>`;
+}
+
+function wireBatch(){
+  $("#screen").querySelectorAll(".js-batch").forEach(el=>el.onclick=e=>{
+    e.stopPropagation();
+    const group=(data[el.dataset.key]||[]).filter(x=>x.priority===el.dataset.prio);
+    if(!group.length) return;
+    const allDone=group.every(x=>x.done);
+    group.forEach(x=>{ x.done=!allDone; });
+    persist();
+  });
+}
+
 /* 周末训练打卡卡（todo 模块，按天标签就地勾选） */
 function trainTileHTML(){
   const key="train", m=modOf(key), all=data[key]||[];
@@ -1133,6 +1157,7 @@ function trainTileHTML(){
     : `<div class="focus-empty">还没有训练项，去「周末训练」添加吧</div>`;
   return `<div class="tile b12"><div class="tile-h"><span class="tic">${icon("sword",16)}</span><div class="tt"><span class="en">WEEKEND TRAINING</span><span class="zh">周末训练打卡</span></div><span class="r js-open" data-open="${key}">查看全部</span></div>
     <div class="tk-head"><span class="pct">${done}<span style="color:var(--text-secondary)">/${all.length}</span></span><span class="cnt">完成 ${pct}%</span><span class="bar"><i style="width:${pct}%"></i></span></div>
+    ${batchBar(m,key)}
     <div class="tk-list" style="max-height:300px;overflow:auto">${list}</div></div>`;
 }
 
@@ -1193,6 +1218,7 @@ function wireHome(){
   const tg=$("#pomo-toggle"); if(tg) tg.onclick=()=>{ pomo.running=!pomo.running; pomoUpdate(); };
   const rs=$("#pomo-reset"); if(rs) rs.onclick=()=>{ pomo.running=false; pomo.remain=pomo.total; pomoUpdate(); };
   wireDrags();
+  wireBatch();
 }
 
 /* ---------- INSIGHT ---------- */
@@ -1251,6 +1277,7 @@ function renderModule(key){
       <div class="search-box">${icon("search",15,2.2)}<input id="search" placeholder="搜索…" value="${attr(searchQ)}"/></div>
       <div class="spacer"></div><button class="btn" id="btn-new">${icon("plus",16,2.2)}新建</button></div>
     ${head}
+    ${m.type==="todo"&&m.priorities?batchBar(m,key):''}
     <div class="mod-layout">
       <div class="mod-main">
         <div class="sec-title">全部记录 <span id="rec-count" style="margin-left:auto;font-weight:500;color:var(--text-secondary);font-size:12px">${it.length} 条</span></div>
@@ -1439,6 +1466,7 @@ function wireModule(key){ const m=modOf(key);
   $("#screen").querySelectorAll(".js-del").forEach(el=>el.onclick=e=>{ e.stopPropagation(); confirmDelete(key, el.dataset.id); });
   $("#screen").querySelectorAll(".js-pin").forEach(el=>el.onclick=e=>{ e.stopPropagation(); const x=(data[key]).find(i=>i.id==el.dataset.id); x.pinned=!x.pinned; persist(); });
   wireDrags();
+  wireBatch();
 }
 
 /* ---------- EDITOR MODAL (per type) ---------- */
